@@ -1,32 +1,114 @@
-// Require express router
-const router = require('express').Router();
+/// Require Thoughts and Users Models
+const {Thoughts, Users} = require('../models');
 
-// Set requirements (from thoughtsController)
-const { 
-    getAllThoughts, 
-    getThoughtsById, 
-    createThoughts, 
-    updateThoughts,
-    deleteThoughts,
-    addReaction,
-    deleteReaction
+// Set up Thoughts Controller
+const thoughtsController = {
 
-} = require('../../controllers/thoughtsController');
+    // Create a new thought
+    createThoughts({params, body}, res) {
+        Thoughts.create(body)
+        .then(({_id}) => {
+            return Users.findOneAndUpdate({ _id: params.userId}, {$push: {thoughts: _id}}, {new: true});
+        })
+        .then(dbThoughtsData => {
+            if(!dbThoughtsData) {
+                res.status(404).json({message: 'No thoughts with this particular ID!'});
+                return;
+            }
+            res.json(dbThoughtsData)
+        })
+        .catch(err => res.json(err)); 
+    },
 
-// -- Directs to: /api/thoughts <GET>
-router.route('/').get(getAllThoughts);
+    // Get all available Thoughts
+    getAllThoughts(req,res) {
+        Thoughts.find({})
+        .populate({path: 'reactions', select: '-__v'})
+        .select('-__v')
+        // .sort({_id: -1})
+        .then(dbThoughtsData => res.json(dbThoughtsData))
+        .catch(err => {
+            console.log(err);
+            res.status(500).json(err);
+        });
+    },
 
-// -- Directs to: /api/thoughts/:id <GET, PUT, DELETE>
-router.route('/:id').get(getThoughtsById).put(updateThoughts).delete(deleteThoughts); 
+    // Get a certain thought by ID
+    getThoughtsById({params}, res) {
+        Thoughts.findOne({ _id: params.id })
+        .populate({path: 'reactions',select: '-__v'})
+        .select('-__v')
+        .then(dbThoughtsData => {
+            if(!dbThoughtsData) {
+            res.status(404).json({message: 'No thoughts with this particular ID!'});
+            return;
+        }
+        res.json(dbThoughtsData)
+        })
+        .catch(err => {
+            console.log(err);
+            res.sendStatus(400);
+        });
+    },
 
-// -- Directs to: /api/thoughts/:userId <POST>
-router.route('/:userId').post(createThoughts);
+    // Update a current thought by ID
+    updateThoughts({params, body}, res) {
+        Thoughts.findOneAndUpdate({_id: params.id}, body, {new: true, runValidators: true})
+        .populate({path: 'reactions', select: '-__v'})
+        .select('-___v')
+        .then(dbThoughtsData => {
+            if (!dbThoughtsData) {
+                res.status(404).json({message: 'No thoughts with this particular ID!'});
+                return;
+            }
+                res.json(dbThoughtsData);
+        })
+        .catch(err => res.json(err));
+    },
 
-// -- Directs to: /api/thoughts/:thoughtId/reactions <POST>
-router.route('/:thoughtId/reactions').post(addReaction);
+    // Delete a current thought by ID
+    deleteThoughts({params}, res) {
+        Thoughts.findOneAndDelete({_id: params.id})
+        .then(dbThoughtsData => {
+            if (!dbThoughtsData) {
+                res.status(404).json({message: 'No thoughts with this particular ID!'});
+                return;
+            }
+            res.json(dbThoughtsData);
+            })
+            .catch(err => res.status(400).json(err));
+    },
 
-// -- Directs to: /api/thoughts/:thoughtId/reactionId <DELETE>
-router.route('/:thoughtId/reactions/:reactionId').delete(deleteReaction);
+    // Add a new Reaction
+    addReaction({params, body}, res) {
+        Thoughts.findOneAndUpdate({_id: params.thoughtId}, {$push: {reactions: body}}, {new: true, runValidators: true})
+        .populate({path: 'reactions', select: '-__v'})
+        .select('-__v')
+        .then(dbThoughtsData => {
+        if (!dbThoughtsData) {
+            res.status(404).json({message: 'No thoughts with this particular ID!'});
+            return;
+        }
+        res.json(dbThoughtsData);
+        })
+        .catch(err => res.status(400).json(err))
 
-// Export module router
-module.exports = router;
+    },
+
+    // Delete a reaction by ID
+    deleteReaction({params}, res) {
+        Thoughts.findOneAndUpdate({_id: params.thoughtId}, {$pull: {reactions: {reactionId: params.reactionId}}}, {new : true})
+        .then(dbThoughtsData => {
+            if (!dbThoughtsData) {
+                res.status(404).json({message: 'No thoughts with this particular ID!'});
+                return;
+            }
+            res.json(dbThoughtsData);
+        })
+        .catch(err => res.status(400).json(err));
+    }
+
+};
+
+// Export module thought controller
+module.exports = thoughtsController;
